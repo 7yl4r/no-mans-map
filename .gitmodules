@@ -1,0 +1,3 @@
+[submodule "ProceduralTerrain.js"]
+	path = ProceduralTerrain.js
+	url = https://github.com/benwasser/ProceduralTerrain.js

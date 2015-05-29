@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+		<meta name="viewport" id="vp" content="initial-scale=1.0,user-scalable=no,maximum-scale=1,width=device-width" />
+		<meta name="apple-mobile-web-app-capable" content="no">
+		<meta name="apple-mobile-web-app-status-bar-style" content="black">
+
+		<script type='application/javascript' src="http://ajax.googleapis.com/ajax/libs/jquery/2.1.0/jquery.min.js"></script>
+		<script type='application/javascript' src="http://ulelo.com/proceduralterrain.js"></script>
+        <script type="application/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/dat-gui/0.5/dat.gui.min.js"></script>
+		<style>
+			@font-face {
+				font-family: 'VGA8';
+				src: url('http://ulelo.com/VGA8.ttf');
+			}
+			* {
+				-webkit-box-sizing: border-box;
+				-moz-box-sizing: border-box;
+				box-sizing: border-box;
+				-webkit-font-smoothing: antialiased;
+			}
+
+			body {
+				font-family: 'VGA8', Courier, monospace;
+				margin:0px;
+				padding:0px;
+				background: #000;
+				color:#fff;
+				font-size:10px;
+				text-align: center;
+			}
+
+			h1 {
+				font-size: 26px;
+			}
+
+			#map_container {
+                z-index: 1;
+                position: absolute;
+                top: 0px;
+                left: 0px;
+				display: inline-block;
+				margin-bottom: 10px;
+                border-style: double;
+                boder-color: white;
+            }
+
+            #can {
+                position: absolute;
+                top: 0px;
+                left: 0px;
+                z-index: 2;
+            }
+
+			.map {
+				font-size: 16px;
+				line-height: 1;
+            }
+
+			input {
+				color:#000;
+				background-color: #fff;
+				border:0;
+				padding:5px;
+				width:35%;
+				font-family: inherit;
+				font-size: inherit;
+				margin-top:5px;
+			}
+
+			a {
+				color:inherit;
+				border-bottom: 2px solid #fff;
+			}
+
+			.about {
+				max-width:700px;
+				display: inline-block;
+				line-height: 1.5;
+				margin-bottom: 30px;
+			}
+
+			@media (max-width: 830px) {
+				h1 {
+					font-size: 14px;
+				}
+				h2 {
+					font-size: 10px;
+				}
+				body {
+					font-size: 9px;
+					line-height: 1.4;
+				}
+				* {
+					max-width:100%;
+				}
+			}
+
+            #title-head {
+                z-index: 3;
+                background-color: rgba(0, 0, 0, .5);
+                position: absolute;
+                top: 0px;
+                left: 10px;
+            }
+
+            .bottom-right-x {
+                position: absolute;
+                bottom: 1px;
+                right: 1px;
+            }
+
+		</style>
+		<title>Procedural Terrain Generator</title>
+	</head>
+	<body>
+        <div id="title-head">
+            <h1>No Man's Map</h1>
+            <h2>
+                Move around, reveal, learn, grow, explore.
+            </h2>
+            <div class="about">
+                Game design by <a href="https://github.com/7yl4r">Tylar Murray</a>,
+                Procedural terrain generator by <a href="https://benwasser.com">Ben Wasser</a>,
+                Simplex implementation by Jonas Wagner.
+            </div>
+            <a class="bottom-right-x" href="#" onclick="$('#title-head').hide()">X</a>
+        </div>
+
+		<div id="map_container">
+			<div id="2d_map" class="map"></div>
+			<div id="height_map" class="map" style="color:#1bce17;display:none;"></div>
+			<div id="temperature_map" class="map" style="color:#eae335;display:none;"></div>
+			<div id="precipitation_map" class="map" style="color:#479fff;display:none;"></div>
+            <canvas width="2000" height="2000" id="can"></canvas>
+        </div>
+
+	</body>
+	<script>
+		var world = {
+            details: 20,
+            granularity: 0.2,
+            continent_factor: 2,
+            water_level: 20 * 0.33,
+            width: 100,
+            height: 100,
+            currentMap: '2d_map',
+            generate: function(){
+                getInputs();
+                generateAll();
+            },
+            evolve: function(){
+                evolveAll();
+                generateAll();
+            }
+        };
+
+        var player = {
+            w: 10,
+            h: 10,
+            x0:window.innerWidth/2,
+            x: window.innerWidth/2,
+            y0:window.innerHeight/2,
+            y: window.innerHeight/2,
+            vision: 100,
+            move: function(direction){
+                var MOVEMENT = 10;
+                if (direction == 'up'){
+                    player.y -= MOVEMENT;
+                } else if (direction == 'down'){
+                    player.y += MOVEMENT;
+                } else if (direction == 'left'){
+                    player.x -= MOVEMENT
+                } else if (direction == 'right'){
+                    player.x += MOVEMENT
+                }
+                scroll(player.x - player.x0, player.y - player.y0);
+                player.view();
+                player.draw();
+            },
+            view: function(){
+                ctx.clearRect(player.x-player.vision/2, player.y-player.vision/2, player.vision, player.vision);
+                data = ctx.getImageData(player.x, player.y, 1, 1).data;
+                if (data[0] + data[1] + data[2] !== 0) {
+                    console.log('c=', data[0], data[1], data[2]);
+                }
+            },
+            draw: function(){
+                ctx.strokeStyle = '#f00';
+                ctx.beginPath();
+                ctx.moveTo(player.x, player.y-25);
+                ctx.lineTo(player.x+10, player.y-15);
+                ctx.lineTo(player.x, player.y);
+                ctx.lineTo(player.x-10, player.y-15);
+                ctx.closePath();
+                ctx.stroke();
+            }
+        }
+
+        var ctx = document.getElementById('can').getContext('2d');
+        ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+        player.view();
+
+        //pull dat gui to front
+        $(document).ready( function(){
+            $('.dg').css('z-index', 4);
+        });
+
+        var gui = new dat.GUI();
+        gui.add(world, 'width');
+        gui.add(world, 'height');
+        gui.add(world, 'details');
+        gui.add(world, 'granularity');
+        gui.add(world, 'continent_factor');
+        gui.add(world, 'water_level');
+        gui.add(world, 'generate');
+
+        gui.add(world, 'currentMap', [
+            '2d_map',
+            'height_map',
+            'temperature_map',
+            'precipitation_map'
+        ]).onChange(function(value){
+            show(value);
+        });
+
+        gui.add(world, 'evolve');
+
+		var map = new ProceduralTerrain(world);
+
+		function show(id){
+			$('.map').hide();
+			$('#' + id).show();
+		}
+
+		function render2DMap(){
+			var preview = '';
+			map.compileTerrain({water_level: world.water_level}, function(err, simple_map){
+				if (err) return alert(err);
+				for (var i = 0; i < simple_map.length; i++) {
+					for (var j = 0; j < simple_map[i].length; j++) {
+						if (simple_map[i][j] == '≋') simple_map[i][j] = '<span style="color:#335ad5;">≋</span>';
+						if (simple_map[i][j] == '≈') simple_map[i][j] = '<span style="color:#359af3;">≋</span>';
+						if (simple_map[i][j] == '≐') simple_map[i][j] = '<span style="color:#fff;">≐</span>';
+						if (simple_map[i][j] == '≡') simple_map[i][j] = '<span style="color:#a5dcd2;">≡</span>';
+						if (simple_map[i][j] == '∻') simple_map[i][j] = '<span style="color:#c3b687;">∻</span>';
+						if (simple_map[i][j] == '≏') simple_map[i][j] = '<span style="color:#6e6e70;">≏</span>';
+						if (simple_map[i][j] == '▓') simple_map[i][j] = '<span style="color:#7e849d;">▓</span>';
+						if (simple_map[i][j] == '▒') simple_map[i][j] = '<span style="color:#899d56;">▒</span>';
+						if (simple_map[i][j] == '░') simple_map[i][j] = '<span style="color:#589d53;">░</span>';
+						if (simple_map[i][j] == '∗') simple_map[i][j] = '<span style="color:#57ac53;">∗</span>';
+						if (simple_map[i][j] == '≼') simple_map[i][j] = '<span style="color:#3b7e5e;">≼</span>';
+						if (simple_map[i][j] == '≿') simple_map[i][j] = '<span style="color:#39950b;">≿</span>';
+						if (simple_map[i][j] == '≒') simple_map[i][j] = '<span style="color:#514c70;">≒</span>';
+						preview += simple_map[i][j];
+					}
+					preview += '<br />';
+				}
+				$('#2d_map').html(preview);
+			});
+		}
+
+		function getInputs(){
+            world.width = parseInt($('#width').val());
+            world.height = parseInt($('#height').val());
+            world.details = parseInt($('#details').val());
+            world.granularity = parseFloat($('#granularity').val());
+            world.water_level = details * parseFloat($('#water_level').val());
+			map = new ProceduralTerrain(world);
+		}
+
+		function evolveAll(){
+			map.evolveHeight();
+			map.evolveTemperature();
+			map.evolvePrecipitation();
+		}
+
+		function generateAll(){
+			$('#height_map').html(map.generateHeightMap(world.granularity).getHeightMap('text'));
+			$('#temperature_map').html(map.generateTemperatureMap(world.granularity).getTemperatureMap('text'));
+			$('#precipitation_map').html(map.generatePrecipitationMap(world.granularity).getPrecipitationMap('text'));
+			render2DMap();
+		}
+
+		generateAll();
+
+        // game keyboard controls
+        document.addEventListener('keydown', function(event) {
+            if(event.keyCode == 65) { // left (a)
+                player.move('left');
+            } else if(event.keyCode == 68) {  // right (d)
+                player.move('right');
+            } else if(event.keyCode == 87){ // up (w)
+                player.move('up');
+            } else if(event.keyCode == 83){  // down (s)
+                player.move('down');
+            }
+        });
+    </script>
+</html>
